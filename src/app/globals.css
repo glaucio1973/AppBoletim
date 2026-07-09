@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/*
+ * Identidade visual de referência: www.liessin.com.br
+ * Azul institucional #006FBA, amarelo de destaque #FFE938, botões com
+ * cantos assimétricos (4px / 12px) e tipografia de títulos em caixa alta
+ * condensada (Oswald, aproximação livre da fonte proprietária do site).
+ */
+:root {
+  --background: #f5f7fa;
+  --surface: #ffffff;
+  --foreground: #17212b;
+  --muted: #5b6b7a;
+  --border: #e2e8f0;
+
+  --primary: #006fba;
+  --primary-dark: #00538c;
+  --primary-light: #e8f3fb;
+  --accent: #ffe938;
+  --accent-dark: #b89f00;
+
+  --success: #1e8e5a;
+  --success-bg: #e6f6ee;
+  --warning: #b7791f;
+  --warning-bg: #fff7e0;
+  --danger: #c22b3a;
+  --danger-bg: #fbe9eb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+  --color-accent: var(--accent);
+  --color-accent-dark: var(--accent-dark);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-oswald);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1720;
+    --surface: #17212b;
+    --foreground: #eef2f6;
+    --muted: #9fb0bf;
+    --border: #2a3946;
+    --primary-light: #12293a;
+    --success-bg: #10301f;
+    --warning-bg: #362a06;
+    --danger-bg: #391015;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3,
+.heading-font {
+  font-family: var(--font-heading), var(--font-sans), sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* Botão institucional: cantos assimétricos 4px/12px, no padrão liessin.com.br */
+.btn-liessin {
+  border-radius: 4px 12px;
+}
