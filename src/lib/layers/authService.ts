@@ -26,13 +26,32 @@ import type { LayersTokenResponse, LayersUserInfo } from "@/lib/layers/types";
 
 const CAMPOS_RA_FALLBACK = ["ra", "registration_number", "external_id", "cpf", "email"] as const;
 
+/**
+ * Quando LAYERS_FAKE_IDP=true (somente dev), ignora as URLs reais da Layers
+ * configuradas em .env e usa o IdP simulado local — evita que alguém deixe
+ * LAYERS_FAKE_IDP=true "esquecido" mas ainda assim tente falar com a Layers real.
+ */
+function authUrl(): string {
+  return env.LAYERS_FAKE_IDP ? fakeUrl("/api/dev/fake-layers/authorize") : env.LAYERS_AUTH_URL;
+}
+function tokenUrl(): string {
+  return env.LAYERS_FAKE_IDP ? fakeUrl("/api/dev/fake-layers/token") : env.LAYERS_TOKEN_URL;
+}
+function userinfoUrl(): string {
+  return env.LAYERS_FAKE_IDP ? fakeUrl("/api/dev/fake-layers/userinfo") : env.LAYERS_USERINFO_URL;
+}
+function fakeUrl(path: string): string {
+  return new URL(path, env.APP_BASE_URL).toString();
+}
+
 export function buildAuthorizeUrl(state: string): string {
-  if (!env.LAYERS_AUTH_URL) {
+  const base = authUrl();
+  if (!base) {
     throw new LayersAuthError(
       "LAYERS_AUTH_URL não configurado. Preencha o .env com o endpoint de autorização da Layers."
     );
   }
-  const url = new URL(env.LAYERS_AUTH_URL);
+  const url = new URL(base);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", env.LAYERS_CLIENT_ID);
   url.searchParams.set("redirect_uri", env.LAYERS_REDIRECT_URI);
@@ -42,14 +61,15 @@ export function buildAuthorizeUrl(state: string): string {
 }
 
 export async function exchangeCodeForToken(code: string): Promise<LayersTokenResponse> {
-  if (!env.LAYERS_TOKEN_URL) {
+  const url = tokenUrl();
+  if (!url) {
     throw new LayersAuthError(
       "LAYERS_TOKEN_URL não configurado. Preencha o .env com o endpoint de token da Layers."
     );
   }
   try {
     const response = await axios.post<LayersTokenResponse>(
-      env.LAYERS_TOKEN_URL,
+      url,
       new URLSearchParams({
         grant_type: "authorization_code",
         code,
@@ -72,13 +92,14 @@ export async function exchangeCodeForToken(code: string): Promise<LayersTokenRes
 }
 
 export async function fetchUserInfo(accessToken: string): Promise<LayersUserInfo> {
-  if (!env.LAYERS_USERINFO_URL) {
+  const url = userinfoUrl();
+  if (!url) {
     throw new LayersAuthError(
       "LAYERS_USERINFO_URL não configurado. Preencha o .env com o endpoint de userinfo da Layers."
     );
   }
   try {
-    const response = await axios.get<LayersUserInfo>(env.LAYERS_USERINFO_URL, {
+    const response = await axios.get<LayersUserInfo>(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
       timeout: 15000,
     });
