@@ -10,26 +10,26 @@ import type { LinhaCuboNotas } from "@/lib/totvs/types";
 /**
  * Cliente SOAP para o webservice TOTVS RM `wsConsultaSQL` (IwsConsultaSQL).
  *
- * IMPORTANTE — status desta integração:
- * A partir deste ambiente de desenvolvimento não foi possível obter o WSDL real
- * (`?wsdl` e uma chamada SOAP de sondagem retornam respostas vazias com
- * assinatura de dispositivo de borda/rede — `Server: Microsoft-HTTPAPI/2.0`,
- * `Content-Length: 0` — e não um SOAP Fault real da aplicação), então o nome
- * exato da operação, o namespace e o formato de saída do dataset NÃO estão
- * confirmados a partir daqui.
+ * Contrato CONFIRMADO em teste real (RA 20131249, PERIODOLETIVO=2026,
+ * FILIAL=1, sentença CUBO.07):
+ *   - operação: `RealizarConsultaSQL` (prefixo `tot:`, namespace
+ *     `http://www.totvs.com/`)
+ *   - elementos do corpo, nessa ordem: `codSentenca`, `codColigada`,
+ *     `codSistema`, `parameters`
+ *   - `parameters` é uma STRING no formato `CHAVE=VALOR;CHAVE=VALOR;...`
+ *     (não é XML aninhado)
+ *   - sem elemento `outputType`
+ *   - `SOAPAction` precisa do nome da interface: `http://www.totvs.com/IwsConsultaSQL/RealizarConsultaSQL`
+ *     (só `http://www.totvs.com/RealizarConsultaSQL`, sem o `IwsConsultaSQL/`,
+ *     faz o servidor devolver `202 Accepted` com corpo vazio, sem nunca
+ *     processar a chamada)
+ *   - resposta: SOAP normal, `RealizarConsultaSQLResult` contém um
+ *     `NewDataSet` (DataSet .NET) serializado como texto XML‑escapado, com
+ *     uma linha `<Resultado>` por registro
+ *   - Basic Auth com usuário técnico de integração; certificado autoassinado
  *
- * O que ficou confirmado (ver README):
- *   - host, porta e path do endpoint (fornecidos pelo cliente)
- *   - Basic Auth com usuário técnico de integração
- *   - parâmetros de negócio da sentença CUBO.07: PERIODOLETIVO, FILIAL, RA
- *   - coligada=1, sistema=G
- *   - certificado autoassinado no servidor
- *
- * O nome da operação/SOAPAction/namespace são configuráveis via env
- * (TOTVS_SOAP_OPERATION/TOTVS_SOAP_ACTION/TOTVS_SOAP_NAMESPACE) para que
- * possam ser corrigidos sem alterar código assim que o WSDL puder ser
- * consultado a partir da rede da escola. `TOTVS_MODE=mock` (padrão) evita
- * depender disso durante o desenvolvimento.
+ * Tudo isso é configurável via env (`TOTVS_SOAP_OPERATION`,
+ * `TOTVS_SOAP_ACTION`, `TOTVS_SOAP_NAMESPACE`) caso mude em outro ambiente.
  */
 
 interface ConsultaSqlParams {
@@ -43,28 +43,28 @@ function escapeXml(value: string): string {
   ));
 }
 
-function buildParametrosXml(parametros: Record<string, string | number>): string {
-  const itens = Object.entries(parametros)
-    .map(([nome, valor]) => `<parameter><nome>${escapeXml(nome)}</nome><valor>${escapeXml(String(valor))}</valor></parameter>`)
-    .join("");
-  return `<parameters>${itens}</parameters>`;
+/** Formato confirmado: "CHAVE=VALOR;CHAVE=VALOR;..." (não XML aninhado). */
+function buildParametrosString(parametros: Record<string, string | number>): string {
+  return Object.entries(parametros)
+    .map(([nome, valor]) => `${nome}=${valor}`)
+    .join(";");
 }
 
 function buildEnvelope({ codConsulta, parametros }: ConsultaSqlParams): string {
-  const parametrosXml = buildParametrosXml(parametros);
   const op = env.TOTVS_SOAP_OPERATION;
+  const parametrosStr = buildParametrosString(parametros);
   return `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <${op} xmlns="${env.TOTVS_SOAP_NAMESPACE}">
-      <codColigada>${escapeXml(env.TOTVS_COD_COLIGADA)}</codColigada>
-      <codSistema>${escapeXml(env.TOTVS_COD_SISTEMA)}</codSistema>
-      <codConsulta>${escapeXml(codConsulta)}</codConsulta>
-      <parameters><![CDATA[${parametrosXml}]]></parameters>
-      <outputType>2</outputType>
-    </${op}>
-  </soap:Body>
-</soap:Envelope>`;
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tot="${env.TOTVS_SOAP_NAMESPACE}">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <tot:${op}>
+      <tot:codSentenca>${escapeXml(codConsulta)}</tot:codSentenca>
+      <tot:codColigada>${escapeXml(env.TOTVS_COD_COLIGADA)}</tot:codColigada>
+      <tot:codSistema>${escapeXml(env.TOTVS_COD_SISTEMA)}</tot:codSistema>
+      <tot:parameters>${escapeXml(parametrosStr)}</tot:parameters>
+    </tot:${op}>
+  </soapenv:Body>
+</soapenv:Envelope>`;
 }
 
 /**

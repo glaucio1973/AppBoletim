@@ -8,11 +8,11 @@ tabela com drilldown), consultadas no **Web Service TOTVS RM**
 
 Repositório: <https://github.com/glaucio1973/AppBoletim>
 
-> **Status atual:** a integração com a TOTVS já está implementada contra o
-> contrato de negócio confirmado pelo cliente (host, credenciais, sentença
-> `CUBO.07`, parâmetros `PERIODOLETIVO`/`FILIAL`/`RA`, coligada `1`, sistema
-> `G`). O app roda por padrão com **dados mockados** (`TOTVS_MODE=mock`) para
-> não depender de rede/credenciais em desenvolvimento. A integração com a
+> **Status atual:** a integração com a TOTVS é **real e validada** — testada
+> de ponta a ponta contra o webservice de produção da escola (`TOTVS_MODE=real`),
+> retornando as notas verdadeiras do RA de teste. O app roda por padrão com
+> **dados mockados** (`TOTVS_MODE=mock`) para não depender de rede/credenciais
+> em desenvolvimento, mas o modo real está pronto pra uso. A integração com a
 > **Layers real ainda não está confirmada** — ver [Status da integração
 > Layers](#status-da-integração-layers-importante) — e por isso o app inclui
 > um **IdP simulado** só para desenvolvimento local.
@@ -108,40 +108,58 @@ cadastro de parceiro, o projeto inclui um **IdP falso** em
 
 ## Status da integração TOTVS
 
-Os dados de negócio confirmados pelo cliente e já implementados:
+**Integração real, testada de ponta a ponta** contra o webservice de
+produção da escola (RA `20131249`, `PERIODOLETIVO=2026`, `FILIAL=1`,
+sentença `CUBO.07`) — não é mais um contrato assumido, é o que efetivamente
+funciona:
 
 | Item | Valor |
 |---|---|
 | Endpoint | `https://associacaoisraelita138614.rm.cloudtotvs.com.br:8051/wsConsultaSQL/IwsConsultaSQL` |
 | Autenticação | HTTP Basic Auth (usuário técnico de integração) |
+| Operação SOAP | `RealizarConsultaSQL` (prefixo `tot:`, namespace `http://www.totvs.com/`) |
+| `SOAPAction` | `http://www.totvs.com/IwsConsultaSQL/RealizarConsultaSQL` — **precisa** do nome da interface (`IwsConsultaSQL/`) antes da operação; sem isso o servidor devolve `202 Accepted` com corpo vazio e nunca processa a chamada |
+| Elementos do corpo (nessa ordem) | `codSentenca`, `codColigada`, `codSistema`, `parameters` |
+| Formato de `parameters` | string `CHAVE=VALOR;CHAVE=VALOR;...` (não é XML aninhado) |
 | Sentença | `CUBO.07` |
 | Coligada / Sistema | `1` / `G` |
-| Parâmetros | `PERIODOLETIVO`, `FILIAL`, `RA` |
-| RA de teste | `20131249` |
+| Parâmetros de negócio | `PERIODOLETIVO`, `FILIAL`, `RA` |
+| Certificado | Autoassinado — app configurado para não validar (`TOTVS_IGNORE_SELF_SIGNED_CERT=true`) |
 
-**O que NÃO foi possível confirmar a partir deste ambiente de
-desenvolvimento**: o WSDL do serviço. Uma checagem direta (`?wsdl` e uma
-chamada SOAP de sondagem) mostrou que a rede consegue alcançar o host (TLS
-correto), mas as respostas (`400` vazio no `GET ?wsdl`, `202` vazio no `POST`
-SOAP, sempre com `Server: Microsoft-HTTPAPI/2.0` e `Content-Length: 0`) têm
-assinatura de um dispositivo de borda/rede, não de um SOAP Fault real da
-aplicação WCF — ou seja, o contrato exato (nome da operação, namespace,
-formato do dataset de saída) não pôde ser validado a partir daqui.
+Envelope SOAP completo usado pelo app (`src/lib/totvs/client.ts`):
 
-Por isso, `src/lib/totvs/client.ts`:
+```xml
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tot="http://www.totvs.com/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <tot:RealizarConsultaSQL>
+      <tot:codSentenca>CUBO.07</tot:codSentenca>
+      <tot:codColigada>1</tot:codColigada>
+      <tot:codSistema>G</tot:codSistema>
+      <tot:parameters>PERIODOLETIVO=2026;FILIAL=1;RA=20131249</tot:parameters>
+    </tot:RealizarConsultaSQL>
+  </soapenv:Body>
+</soapenv:Envelope>
+```
 
-- deixa o nome da operação/SOAPAction/namespace configuráveis via
-  `TOTVS_SOAP_OPERATION` / `TOTVS_SOAP_ACTION` / `TOTVS_SOAP_NAMESPACE`,
-  ajustáveis sem mudar código;
-- implementa um parser tolerante para o formato mais comum de retorno
-  (DataSet .NET serializado em XML);
-- só deve ser testado com `TOTVS_MODE=real` **de dentro da rede da
-  escola**, onde o serviço real (não um dispositivo de borda) deve responder.
+A resposta é um SOAP Envelope normal; `RealizarConsultaSQLResult` contém um
+`NewDataSet` (DataSet .NET) serializado como texto XML-escapado, com uma tag
+`<Resultado>` por linha. `src/lib/totvs/client.ts` já faz esse parse (duas
+passadas de XML: a resposta SOAP, depois o dataset dentro dela).
 
-Enquanto isso, `TOTVS_MODE=mock` (padrão) gera dados fictícios no **mesmo
-formato de colunas confirmado** (`NOME`, `DISCIPLINA`, `ETAPA`, `PROVA`,
-`NOTA`, `CODPERLET`, `CODTURMA`, `SERIE`, `ORDEM`, `RA`), permitindo
-desenvolver e demonstrar o app inteiro sem depender da rede.
+> Nota histórica: as primeiras tentativas, feitas a partir de um ambiente de
+> desenvolvimento diferente deste, sempre voltavam com `202`/`400` vazios
+> (assinatura de dispositivo de borda de rede). Isso não era bloqueio de
+> rede — era o envelope SOAP errado (nome de operação, ordem dos elementos e
+> formato de `parameters` incorretos, além de faltar o prefixo `IwsConsultaSQL/`
+> no `SOAPAction`). Com o envelope correto acima, a chamada funciona
+> normalmente de qualquer rede com o host acessível.
+
+Tudo isso é configurável via `.env` (`TOTVS_SOAP_OPERATION`,
+`TOTVS_SOAP_ACTION`, `TOTVS_SOAP_NAMESPACE`) caso mude em outro ambiente.
+`TOTVS_MODE=mock` (padrão do `.env.example`, para não depender de rede/
+credenciais em desenvolvimento) gera dados fictícios no **mesmo formato de
+colunas confirmado**; `TOTVS_MODE=real` usa o webservice de verdade.
 
 ### Mapeamento de colunas (`src/lib/totvs/mapping.ts`)
 
@@ -149,29 +167,31 @@ desenvolver e demonstrar o app inteiro sem depender da rede.
 |---|---|
 | `NOME` | Nome do aluno |
 | `DISCIPLINA` | Nome da disciplina |
-| `ETAPA` (ex: `"01 - 1º TRI"`) | Trimestre (número extraído de `"Xº TRI"`) |
-| `PROVA` (ex: `"01 - AV1"`, `"07 - MÉDIA TRIMESTRAL"`) | Tipo de avaliação dentro do trimestre |
+| `ETAPA` | Período: `"01 - 1º TRI"` / `"02 - 2º TRI"` / `"03 - 3º TRI"` (trimestre extraído de `"Xº TRI"`), ou os pseudo-períodos anuais `"04 - MÉDIA ANUAL"`, `"05 - RECUP. FINAL"`, `"06 - MÉDIA FINAL"` |
+| `PROVA` | Tipo de avaliação: `"01 - AV1"` … `"07 - MÉDIA TRIMESTRAL"` (por trimestre) e `"08 - MÉDIA ANUAL"`, `"09 - REC FINAL"`, `"10 - BÔNUS FINAL"`, `"11 - MÉDIA FINAL"` (nível anual) |
 | `NOTA` | Nota da avaliação |
 | `CODPERLET` | Ano letivo |
 | `CODTURMA` / `SERIE` | Turma / série (colunas distintas) |
 | `ORDEM` | Ordenação das disciplinas como no boletim oficial |
 | `RA` | Conferido contra o RA da sessão |
 
-A sentença devolve **várias linhas por disciplina + trimestre** (uma por
-avaliação: AV1, AV2, AV3, Bônus, Média, Recuperação Paralela, Média
-Trimestral), muitas sem `NOTA` quando a avaliação não foi realizada. A
-"Média Trimestral" já fechada (considerando eventual recuperação paralela) é
-usada como nota do trimestre; se ainda não fechou, o trimestre aparece sem
-nota (não como zero).
+A sentença devolve **várias linhas por disciplina + período** (uma por
+avaliação), muitas sem `NOTA` quando a avaliação ainda não foi realizada —
+inclusive para trimestres futuros, que já vêm como linhas "vazias" em vez de
+simplesmente não existir. A "Média Trimestral" fechada (considerando
+eventual recuperação paralela) é usada como nota do trimestre.
 
-**Recuperação final / Média final anual**: não confirmadas no teste
-realizado (aluno de exemplo sem necessidade de recuperação). O parser já
-reconhece os padrões prováveis (`"REC FINAL"`, `"MÉDIA FINAL"`) e preenche
-`DisciplinaBoletim.recuperacaoFinal` / `.mediaFinal` quando essas etapas
-aparecerem; enquanto isso, ficam `null` e a UI mostra "—". **Peso por
-avaliação** também não é retornado pela sentença — o campo `peso` já existe
-na estrutura (`AvaliacaoComposicao.peso`), pronto para receber o dado quando
-disponível.
+**Média anual**: quando a TOTVS já fechou a linha oficial (`ETAPA`/`PROVA`
+`"MÉDIA ANUAL"`), ela é usada; enquanto o ano letivo está em andamento (como
+no teste real, só o 1º trimestre fechado), o app calcula uma média
+provisória a partir dos trimestres já fechados e marca como "parcial" na UI.
+**Recuperação final / Média final**: capturadas das linhas `"REC FINAL"` /
+`"MÉDIA FINAL"` quando existirem (não apareceram no teste porque a aluna não
+precisou de recuperação); enquanto isso, ficam `null` e a UI mostra "—".
+**Peso por avaliação**: não é retornado pela sentença — removido da UI do
+drilldown (Dashboard 2) a pedido, mas o campo `AvaliacaoComposicao.peso`
+continua na estrutura, pronto para o dia em que a fonte de dados passar a
+fornecê-lo.
 
 ## Instalação
 
@@ -213,9 +233,9 @@ npm run dev
 Você será redirecionado ao Dashboard Gráfico com dados fictícios; a Tabela
 Detalhada fica em "Tabela Detalhada" no menu superior.
 
-### Testando a TOTVS real
+### Usando a TOTVS real
 
-De dentro da rede da escola, defina no `.env`:
+Defina no `.env`:
 
 ```env
 TOTVS_MODE=real
@@ -224,13 +244,11 @@ TOTVS_PASSWORD=shelda
 ```
 
 As demais variáveis (`TOTVS_BASE_URL`, `TOTVS_SENTENCA_NOTAS`,
-`TOTVS_COD_COLIGADA`, `TOTVS_COD_SISTEMA`, `TOTVS_FILIAL`,
-`TOTVS_PERIODO_LETIVO`) já vêm com os valores reais confirmados como padrão
-em `.env.example`. Se a resposta não bater com o parser (ver [Status da
-integração TOTVS](#status-da-integração-totvs)), ajuste
-`TOTVS_SOAP_OPERATION` / `TOTVS_SOAP_ACTION` / `TOTVS_SOAP_NAMESPACE` e a
-função `parseConsultaSqlResponse()` em `src/lib/totvs/client.ts` conforme o
-WSDL real.
+`TOTVS_SOAP_OPERATION`, `TOTVS_SOAP_ACTION`, `TOTVS_COD_COLIGADA`,
+`TOTVS_COD_SISTEMA`, `TOTVS_FILIAL`, `TOTVS_PERIODO_LETIVO`) já vêm com os
+valores reais confirmados como padrão em `.env.example` (ver [Status da
+integração TOTVS](#status-da-integração-totvs)) — não precisa mexer em nada
+além do modo e das credenciais.
 
 ## Indo para produção
 

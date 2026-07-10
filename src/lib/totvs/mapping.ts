@@ -9,17 +9,15 @@ import type {
 /**
  * Regras de mapeamento da sentença CUBO.07 → domínio do boletim.
  *
- * Confirmado em teste real anterior (RA 20131249): a sentença devolve VÁRIAS
- * linhas por disciplina + trimestre, uma para cada etapa de avaliação:
- *   "01 - AV1", "02 - AV2", "03 - AV3", "04 - BÔNUS TRI",
- *   "05 - MÉDIA", "06 - REC PARALELA TRI", "07 - MÉDIA TRIMESTRAL"
- * Muitas vêm sem NOTA quando o aluno não realizou aquela avaliação.
- *
- * Recuperação final / média final anual: a sentença testada não trouxe essas
- * etapas para o RA de exemplo (aluno sem necessidade de recuperação). O
- * parser abaixo já reconhece os padrões prováveis ("REC FINAL", "MÉDIA
- * FINAL") e preenche os campos quando aparecerem; enquanto não aparecerem,
- * ficam `null` e a UI exibe "—" (ver DisciplinaBoletim.recuperacaoFinal/mediaFinal).
+ * Contrato CONFIRMADO em teste real (RA 20131249, PERIODOLETIVO=2026): cada
+ * linha tem uma coluna `ETAPA` (período: "01 - 1º TRI"/"02 - 2º TRI"/
+ * "03 - 3º TRI", ou os pseudo-períodos anuais "04 - MÉDIA ANUAL",
+ * "05 - RECUP. FINAL", "06 - MÉDIA FINAL") e uma coluna `PROVA` (tipo de
+ * avaliação dentro do período: "01 - AV1", "02 - AV2", "03 - AV3",
+ * "04 - BÔNUS TRI", "05 - MÉDIA", "06 - REC PARALELA TRI",
+ * "07 - MÉDIA TRIMESTRAL", "08 - MÉDIA ANUAL", "09 - REC FINAL",
+ * "10 - BÔNUS FINAL", "11 - MÉDIA FINAL"). Muitas vêm sem `NOTA` quando o
+ * aluno não realizou aquela avaliação.
  */
 
 const TRIMESTRE_RE = /(\d)\s*º?\s*TRI/i;
@@ -32,6 +30,7 @@ type TipoEtapa =
   | "MEDIA"
   | "REC_PARALELA"
   | "MEDIA_TRIMESTRAL"
+  | "MEDIA_ANUAL"
   | "REC_FINAL"
   | "MEDIA_FINAL"
   | "OUTRO";
@@ -44,6 +43,7 @@ const DESCRICAO_POR_TIPO: Record<TipoEtapa, string> = {
   MEDIA: "Média",
   REC_PARALELA: "Recuperação Paralela",
   MEDIA_TRIMESTRAL: "Média Trimestral",
+  MEDIA_ANUAL: "Média Anual",
   REC_FINAL: "Recuperação Final",
   MEDIA_FINAL: "Média Final",
   OUTRO: "Outra avaliação",
@@ -51,11 +51,19 @@ const DESCRICAO_POR_TIPO: Record<TipoEtapa, string> = {
 
 function detectarTipoEtapa(provaBruta: string): TipoEtapa {
   const etapa = provaBruta.toUpperCase();
-  // Ordem importa: "MÉDIA TRIMESTRAL" precisa ser checado antes de "MÉDIA".
+  // Ordem importa: variantes mais específicas de "MÉDIA"/"REC" precisam ser
+  // checadas antes das genéricas ("MÉDIA", "REC PARALELA").
   if (etapa.includes("MÉDIA FINAL") || etapa.includes("MEDIA FINAL")) return "MEDIA_FINAL";
-  if (etapa.includes("REC FINAL") || etapa.includes("RECUPERAÇÃO FINAL") || etapa.includes("RECUPERACAO FINAL"))
+  if (
+    etapa.includes("REC FINAL") ||
+    etapa.includes("RECUP. FINAL") ||
+    etapa.includes("RECUP FINAL") ||
+    etapa.includes("RECUPERAÇÃO FINAL") ||
+    etapa.includes("RECUPERACAO FINAL")
+  )
     return "REC_FINAL";
   if (etapa.includes("MÉDIA TRIMESTRAL") || etapa.includes("MEDIA TRIMESTRAL")) return "MEDIA_TRIMESTRAL";
+  if (etapa.includes("MÉDIA ANUAL") || etapa.includes("MEDIA ANUAL")) return "MEDIA_ANUAL";
   if (etapa.includes("REC PARALELA")) return "REC_PARALELA";
   if (etapa.includes("BÔNUS") || etapa.includes("BONUS")) return "BONUS";
   if (etapa.includes("AV1")) return "AV1";
@@ -110,6 +118,7 @@ export function mapRegistrosParaBoletim(
     const trimestreMap = new Map<1 | 2 | 3, AvaliacaoComposicao[]>();
     let recuperacaoFinal: number | null = null;
     let mediaFinal: number | null = null;
+    let mediaAnualOficial: number | null = null;
 
     for (const linha of linhas) {
       const etapaBruta = String(linha.ETAPA ?? "").trim();
@@ -125,6 +134,10 @@ export function mapRegistrosParaBoletim(
       }
       if (tipo === "MEDIA_FINAL") {
         mediaFinal = nota ?? mediaFinal;
+        continue;
+      }
+      if (tipo === "MEDIA_ANUAL") {
+        mediaAnualOficial = nota ?? mediaAnualOficial;
         continue;
       }
 
@@ -154,8 +167,13 @@ export function mapRegistrosParaBoletim(
       });
 
     const mediasFechadas = trimestres.map((t) => t.mediaTrimestral).filter((n): n is number => n !== null);
-    const mediaAnual = mediasFechadas.length > 0 ? round1(mediasFechadas.reduce((a, b) => a + b, 0) / mediasFechadas.length) : null;
-    const mediaAnualParcial = mediasFechadas.length > 0 && mediasFechadas.length < 3;
+    const mediaAnualCalculada =
+      mediasFechadas.length > 0 ? round1(mediasFechadas.reduce((a, b) => a + b, 0) / mediasFechadas.length) : null;
+    // Preferimos a "Média Anual" oficial retornada pela TOTVS quando existe —
+    // só caímos para a média calculada (simples, dos trimestres fechados) se
+    // a sentença ainda não tiver essa linha (ex: ano letivo em andamento).
+    const mediaAnual = mediaAnualOficial ?? mediaAnualCalculada;
+    const mediaAnualParcial = mediaAnualOficial === null && mediasFechadas.length > 0 && mediasFechadas.length < 3;
 
     const notaFinalParaComparacao = mediaFinal ?? mediaAnual;
     const abaixoDaMedia = notaFinalParaComparacao !== null && notaFinalParaComparacao < opts.mediaMinima;
