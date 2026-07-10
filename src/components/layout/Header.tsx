@@ -14,9 +14,10 @@ interface HeaderProps {
   ra: string;
   turma?: string;
   serie?: string;
+  anoLetivo?: string;
 }
 
-export function Header({ nome, ra, turma, serie }: HeaderProps) {
+export function Header({ nome, ra, turma, serie, anoLetivo }: HeaderProps) {
   const pathname = usePathname();
   const turmaSerie = [serie, turma].filter(Boolean).join(" · ");
 
@@ -31,6 +32,11 @@ export function Header({ nome, ra, turma, serie }: HeaderProps) {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Colégio Liessin</p>
             <h1 className="heading-font text-base font-semibold leading-tight text-foreground">AppBoletim</h1>
           </div>
+          {anoLetivo && (
+            <span className="rounded-full bg-primary-light px-3 py-1 text-xs font-semibold text-primary-dark">
+              Período Letivo {anoLetivo}
+            </span>
+          )}
         </div>
 
         <nav className="flex gap-1 rounded-full bg-background p-1">
