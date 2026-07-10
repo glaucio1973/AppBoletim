@@ -1,14 +1,10 @@
-import { env } from "@/lib/env";
-import { verifySession } from "@/lib/dal";
-import { getBoletimAluno } from "@/lib/totvs/totvsService";
+import { getBoletimDoAlunoAtual } from "@/lib/boletimData";
 import { TabelaDetalhada } from "@/components/boletim/TabelaDetalhada";
 import { FonteBadge } from "@/components/boletim/FonteBadge";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export default async function BoletimDetalhadoPage() {
-  const session = await verifySession();
-  const ra = session.ra || env.TOTVS_RA_PADRAO;
-  const boletim = await getBoletimAluno(ra);
+  const boletim = await getBoletimDoAlunoAtual();
 
   if (boletim.disciplinas.length === 0) {
     return (

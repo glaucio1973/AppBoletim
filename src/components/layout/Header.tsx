@@ -9,8 +9,16 @@ const NAV_ITEMS = [
   { href: "/boletim/detalhado", label: "Tabela Detalhada" },
 ];
 
-export function Header({ nome, ra }: { nome: string; ra: string }) {
+interface HeaderProps {
+  nome: string;
+  ra: string;
+  turma?: string;
+  serie?: string;
+}
+
+export function Header({ nome, ra, turma, serie }: HeaderProps) {
   const pathname = usePathname();
+  const turmaSerie = [serie, turma].filter(Boolean).join(" · ");
 
   return (
     <header className="border-b border-border bg-surface">
@@ -46,7 +54,10 @@ export function Header({ nome, ra }: { nome: string; ra: string }) {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-sm font-semibold text-foreground">{nome}</p>
-            <p className="text-xs text-muted">RA {ra}</p>
+            <p className="text-xs text-muted">
+              RA {ra}
+              {turmaSerie && ` · ${turmaSerie}`}
+            </p>
           </div>
           <form action="/api/auth/logout" method="POST">
             <button

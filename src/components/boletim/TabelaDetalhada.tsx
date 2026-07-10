@@ -119,7 +119,6 @@ function DrilldownTrimestres({
             <thead>
               <tr className="text-left text-muted">
                 <th className="pb-1 font-medium">Avaliação</th>
-                <th className="pb-1 text-center font-medium">Peso</th>
                 <th className="pb-1 text-right font-medium">Nota</th>
               </tr>
             </thead>
@@ -133,7 +132,6 @@ function DrilldownTrimestres({
                   )}
                 >
                   <td className="py-1 pr-2 text-foreground/90">{item.descricao}</td>
-                  <td className="py-1 text-center text-muted">{item.peso ?? "—"}</td>
                   <td className="py-1 text-right tabular-nums">
                     {item.realizada ? item.nota!.toFixed(1) : <span className="text-muted">não realizada</span>}
                   </td>
@@ -146,10 +144,6 @@ function DrilldownTrimestres({
           )}
         </div>
       ))}
-      <p className="col-span-full text-[11px] text-muted">
-        Peso por avaliação ainda não é retornado pela sentença CUBO.07 — estrutura já preparada para exibir
-        quando essa informação estiver disponível na fonte de dados.
-      </p>
     </div>
   );
 }
