@@ -1,8 +1,9 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { clsx } from "clsx";
 import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
 import type { DisciplinaBoletim } from "@/lib/totvs/types";
 
 function formatarNota(nota: number | null): string {
@@ -16,16 +17,7 @@ export function TabelaDetalhada({
   disciplinas: DisciplinaBoletim[];
   mediaMinima: number;
 }) {
-  const [expandidas, setExpandidas] = useState<Set<string>>(new Set());
-
-  function alternar(disciplina: string) {
-    setExpandidas((atual) => {
-      const proximo = new Set(atual);
-      if (proximo.has(disciplina)) proximo.delete(disciplina);
-      else proximo.add(disciplina);
-      return proximo;
-    });
-  }
+  const [selecionada, setSelecionada] = useState<DisciplinaBoletim | null>(null);
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
@@ -42,57 +34,50 @@ export function TabelaDetalhada({
           </tr>
         </thead>
         <tbody>
-          {disciplinas.map((disciplina) => {
-            const aberta = expandidas.has(disciplina.disciplina);
-            return (
-              <Fragment key={disciplina.disciplina}>
-                <tr
-                  onClick={() => alternar(disciplina.disciplina)}
-                  className={clsx(
-                    "cursor-pointer border-b border-border transition hover:bg-primary-light/40",
-                    disciplina.abaixoDaMedia && "bg-danger-bg/40"
-                  )}
-                >
-                  <td className="px-4 py-3 font-medium text-foreground">
-                    <span className="mr-2 inline-block w-3 text-muted">{aberta ? "▾" : "▸"}</span>
-                    {disciplina.disciplina}
-                    {disciplina.abaixoDaMedia && (
-                      <Badge tone="danger">
-                        <span className="ml-1">abaixo</span>
-                      </Badge>
-                    )}
-                  </td>
-                  {[1, 2, 3].map((t) => {
-                    const tri = disciplina.trimestres.find((x) => x.trimestre === t);
-                    return (
-                      <td key={t} className="px-3 py-3 text-center tabular-nums">
-                        {formatarNota(tri?.mediaTrimestral ?? null)}
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-3 text-center font-semibold tabular-nums">
-                    {formatarNota(disciplina.mediaAnual)}
-                    {disciplina.mediaAnualParcial && <span className="ml-1 text-[10px] text-muted">parcial</span>}
-                  </td>
-                  <td className="px-3 py-3 text-center tabular-nums text-muted">
-                    {formatarNota(disciplina.recuperacaoFinal)}
-                  </td>
-                  <td className="px-3 py-3 text-center font-semibold tabular-nums">
-                    {formatarNota(disciplina.mediaFinal)}
-                  </td>
-                </tr>
-                {aberta && (
-                  <tr className="border-b border-border bg-background/40">
-                    <td colSpan={7} className="px-4 py-4">
-                      <DrilldownTrimestres disciplina={disciplina} mediaMinima={mediaMinima} />
-                    </td>
-                  </tr>
+          {disciplinas.map((disciplina) => (
+            <tr
+              key={disciplina.disciplina}
+              onClick={() => setSelecionada(disciplina)}
+              className={clsx(
+                "cursor-pointer border-b border-border transition hover:bg-primary-light/40",
+                disciplina.abaixoDaMedia && "bg-danger-bg/40"
+              )}
+            >
+              <td className="px-4 py-3 font-medium text-foreground">
+                <span className="mr-2 inline-block w-3 text-muted">›</span>
+                {disciplina.disciplina}
+                {disciplina.abaixoDaMedia && (
+                  <Badge tone="danger">
+                    <span className="ml-1">abaixo</span>
+                  </Badge>
                 )}
-              </Fragment>
-            );
-          })}
+              </td>
+              {[1, 2, 3].map((t) => {
+                const tri = disciplina.trimestres.find((x) => x.trimestre === t);
+                return (
+                  <td key={t} className="px-3 py-3 text-center tabular-nums">
+                    {formatarNota(tri?.mediaTrimestral ?? null)}
+                  </td>
+                );
+              })}
+              <td className="px-3 py-3 text-center font-semibold tabular-nums">
+                {formatarNota(disciplina.mediaAnual)}
+                {disciplina.mediaAnualParcial && <span className="ml-1 text-[10px] text-muted">parcial</span>}
+              </td>
+              <td className="px-3 py-3 text-center tabular-nums text-muted">
+                {formatarNota(disciplina.recuperacaoFinal)}
+              </td>
+              <td className="px-3 py-3 text-center font-semibold tabular-nums">
+                {formatarNota(disciplina.mediaFinal)}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
+
+      <Modal open={selecionada !== null} onClose={() => setSelecionada(null)} title={selecionada?.disciplina ?? ""}>
+        {selecionada && <DrilldownTrimestres disciplina={selecionada} mediaMinima={mediaMinima} />}
+      </Modal>
     </div>
   );
 }
@@ -111,7 +96,7 @@ function DrilldownTrimestres({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {disciplina.trimestres.map((trimestre) => (
-        <div key={trimestre.trimestre} className="rounded-xl border border-border bg-surface p-3">
+        <div key={trimestre.trimestre} className="rounded-xl border border-border bg-background/40 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
             {trimestre.trimestre}º Trimestre — formação da média
           </p>

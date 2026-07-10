@@ -36,9 +36,9 @@ type TipoEtapa =
   | "OUTRO";
 
 const DESCRICAO_POR_TIPO: Record<TipoEtapa, string> = {
-  AV1: "Avaliação 1",
-  AV2: "Avaliação 2",
-  AV3: "Avaliação 3",
+  AV1: "AV1",
+  AV2: "AV2",
+  AV3: "AV3",
   BONUS: "Bônus",
   MEDIA: "Média",
   REC_PARALELA: "Recuperação Paralela",
@@ -48,6 +48,10 @@ const DESCRICAO_POR_TIPO: Record<TipoEtapa, string> = {
   MEDIA_FINAL: "Média Final",
   OUTRO: "Outra avaliação",
 };
+
+// Ordem de exibição no drilldown do trimestre. O Bônus é propositalmente
+// omitido (não aparece na composição exibida ao usuário).
+const ORDEM_COMPOSICAO: TipoEtapa[] = ["AV1", "AV2", "AV3", "MEDIA", "REC_PARALELA", "MEDIA_TRIMESTRAL"];
 
 function detectarTipoEtapa(provaBruta: string): TipoEtapa {
   const etapa = provaBruta.toUpperCase();
@@ -71,6 +75,11 @@ function detectarTipoEtapa(provaBruta: string): TipoEtapa {
   if (etapa.includes("AV3")) return "AV3";
   if (etapa.includes("MÉDIA") || etapa.includes("MEDIA")) return "MEDIA";
   return "OUTRO";
+}
+
+function ordemDeTipo(tipo: TipoEtapa): number {
+  const indice = ORDEM_COMPOSICAO.indexOf(tipo);
+  return indice === -1 ? ORDEM_COMPOSICAO.length : indice;
 }
 
 function parseTrimestre(etapa: string): 1 | 2 | 3 | null {
@@ -115,7 +124,7 @@ export function mapRegistrosParaBoletim(
   for (const [disciplina, linhas] of porDisciplina) {
     const ordem = Number(linhas[0]?.ORDEM ?? 999) || 999;
 
-    const trimestreMap = new Map<1 | 2 | 3, AvaliacaoComposicao[]>();
+    const trimestreMap = new Map<1 | 2 | 3, { tipo: TipoEtapa; item: AvaliacaoComposicao }[]>();
     let recuperacaoFinal: number | null = null;
     let mediaFinal: number | null = null;
     let mediaAnualOficial: number | null = null;
@@ -140,24 +149,30 @@ export function mapRegistrosParaBoletim(
         mediaAnualOficial = nota ?? mediaAnualOficial;
         continue;
       }
+      if (tipo === "BONUS") continue; // omitido do drilldown a pedido
 
       const trimestre = parseTrimestre(etapaBruta);
       if (!trimestre) continue; // etapa sem trimestre reconhecível — descartada (ex: recuperação final anual)
 
       if (!trimestreMap.has(trimestre)) trimestreMap.set(trimestre, []);
       trimestreMap.get(trimestre)!.push({
-        etapa: provaBruta || etapaBruta,
-        descricao: DESCRICAO_POR_TIPO[tipo],
-        nota,
-        realizada: nota !== null,
-        peso: null, // TODO: sentença atual não retorna peso por avaliação
+        tipo,
+        item: {
+          etapa: provaBruta || etapaBruta,
+          descricao: DESCRICAO_POR_TIPO[tipo],
+          nota,
+          realizada: nota !== null,
+          peso: null, // TODO: sentença atual não retorna peso por avaliação
+        },
       });
     }
 
     const trimestres: NotaTrimestre[] = [1, 2, 3]
       .filter((t): t is 1 | 2 | 3 => trimestreMap.has(t as 1 | 2 | 3))
       .map((trimestre) => {
-        const composicao = trimestreMap.get(trimestre)!;
+        const composicao = [...trimestreMap.get(trimestre)!]
+          .sort((a, b) => ordemDeTipo(a.tipo) - ordemDeTipo(b.tipo))
+          .map((c) => c.item);
         const linhaMedia = composicao.find((c) => c.descricao === "Média Trimestral");
         return {
           trimestre,
